@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+:root {
+  --background: #FAF3E0;
+  --foreground: #3D1C1C;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-dm-sans);
+  --font-display: var(--font-playfair);
+
+  --color-brown: #3D1C1C;
+  --color-pink: #E8B4B8;
+  --color-sage: #7D9B76;
+  --color-cream: #FAF3E0;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  font-weight: 400;
+}
+
+h1, h2, h3, .font-heading {
+  font-weight: 600;
+}
+
+* {
+  transition-timing-function: ease;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(61, 28, 28, 0.08), 0 4px 12px rgba(61, 28, 28, 0.04);
+}
+
+@keyframes shake {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-8px); }
+  80% { transform: translateX(8px); }
+  100% { transform: translateX(0); }
+}
+
+.animate-shake {
+  animation: shake 350ms ease-in-out;
+}
+
+@keyframes flash-pink {
+  0%, 100% { background-color: #E8B4B8; }
+  50% { background-color: #dc2626; }
+}
+
+.animate-flash-pink {
+  animation: flash-pink 350ms ease-in-out;
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
