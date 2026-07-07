@@ -7,9 +7,17 @@ import TabPills from "@/components/TabPills";
 import TaskCard from "@/components/TaskCard";
 import ProgressBar from "@/components/ProgressBar";
 import LogoutButton from "@/components/LogoutButton";
-import { fetchActiveTasks, fetchCompletionsForDate, addCompletion } from "@/lib/tasks";
-import { getTodayDateStringIST, isTaskVisibleToday, formatDateDisplayIST, formatTimeIST } from "@/lib/date";
+import { fetchActiveTasks, fetchCompletionsForDate, addCompletion, deleteCompletion } from "@/lib/tasks";
+import {
+  getTodayDateStringIST,
+  isTaskVisibleToday,
+  formatDateDisplayIST,
+  formatTimeIST,
+  parseUtcTimestamp,
+} from "@/lib/date";
 import { Task, Completion, Category } from "@/lib/types";
+
+const UNDO_WINDOW_MS = 2 * 60 * 1000;
 
 export default function StaffPage() {
   const { user, ready, logout } = useSession("staff");
@@ -17,8 +25,14 @@ export default function StaffPage() {
   const [completions, setCompletions] = useState<Completion[]>([]);
   const [category, setCategory] = useState<Category>("kitchen");
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
 
   const today = getTodayDateStringIST();
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
@@ -67,6 +81,16 @@ export default function StaffPage() {
     }
   }
 
+  async function handleUndo(completionId: string) {
+    const removed = completions.find((c) => c.id === completionId);
+    setCompletions((prev) => prev.filter((c) => c.id !== completionId));
+    try {
+      await deleteCompletion(completionId);
+    } catch {
+      if (removed) setCompletions((prev) => [...prev, removed]);
+    }
+  }
+
   if (!ready || !user) return null;
 
   return (
@@ -100,13 +124,27 @@ export default function StaffPage() {
           <div className="flex flex-col gap-3">
             {categoryTasks.map((task) => {
               const completion = completionByTaskId.get(task.id);
+
+              let canUndo = false;
+              let secondsRemaining: number | null = null;
+              if (completion && !completion.id.startsWith("optimistic-")) {
+                const elapsed = now - parseUtcTimestamp(completion.completed_at).getTime();
+                if (elapsed < UNDO_WINDOW_MS) {
+                  canUndo = true;
+                  secondsRemaining = Math.max(0, Math.ceil((UNDO_WINDOW_MS - elapsed) / 1000));
+                }
+              }
+
               return (
                 <TaskCard
                   key={task.id}
                   title={task.title}
                   done={!!completion}
                   doneAtLabel={completion ? formatTimeIST(completion.completed_at) : undefined}
+                  canUndo={canUndo}
+                  secondsRemaining={secondsRemaining}
                   onComplete={() => handleComplete(task.id)}
+                  onUndo={completion ? () => handleUndo(completion.id) : undefined}
                 />
               );
             })}

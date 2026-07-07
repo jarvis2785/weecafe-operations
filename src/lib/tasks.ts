@@ -59,6 +59,11 @@ export async function addCompletion(
   return data;
 }
 
+export async function deleteCompletion(id: string): Promise<void> {
+  const { error } = await supabase.from("completions").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function updateTask(
   id: string,
   updates: Partial<Pick<Task, "title" | "is_active" | "category" | "frequency" | "weekly_day">>

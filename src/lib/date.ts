@@ -49,7 +49,7 @@ export function isPast6PMIST(): boolean {
   return getISTParts().hour >= 18;
 }
 
-function parseUtcTimestamp(isoString: string): Date {
+export function parseUtcTimestamp(isoString: string): Date {
   // Postgres `timestamp without time zone` columns come back from
   // Supabase without a trailing "Z"/offset (e.g. "2026-07-06T16:11:22.565").
   // The JS Date constructor treats offset-less strings as LOCAL time, not
