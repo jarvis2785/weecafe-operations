@@ -63,3 +63,12 @@ h1, h2, h3, .font-heading {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

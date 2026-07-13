@@ -7,15 +7,37 @@ import SummaryCard from "@/components/SummaryCard";
 import TaskRow from "@/components/TaskRow";
 import BottomNav from "@/components/BottomNav";
 import LogoutButton from "@/components/LogoutButton";
-import { fetchActiveTasks, fetchCompletionsForDate } from "@/lib/tasks";
+import { fetchActiveTasks, fetchCompletionsForDate, addCompletion } from "@/lib/tasks";
 import {
   getTodayDateStringIST,
   isTaskVisibleToday,
-  isPast6PMIST,
+  isPastFlagTimeIST,
   formatDateDisplayIST,
   formatTimeIST,
 } from "@/lib/date";
-import { Task, CompletionWithUser } from "@/lib/types";
+import { CATEGORIES } from "@/lib/constants";
+import { Task, CompletionWithUser, TimeOfDay } from "@/lib/types";
+
+interface TaskInstance {
+  task: Task;
+  timeOfDay: TimeOfDay | null;
+  sessionLabel?: string;
+}
+
+function completionKey(taskId: string, timeOfDay: TimeOfDay | null): string {
+  return `${taskId}|${timeOfDay ?? ""}`;
+}
+
+function toInstances(tasks: Task[]): TaskInstance[] {
+  return tasks.flatMap((task): TaskInstance[] =>
+    task.frequency === "twice_daily"
+      ? [
+          { task, timeOfDay: "morning", sessionLabel: "☀️ Morning" },
+          { task, timeOfDay: "evening", sessionLabel: "🌙 Evening" },
+        ]
+      : [{ task, timeOfDay: null }]
+  );
+}
 
 export default function ManagerPage() {
   const { user, ready, logout } = useSession("manager");
@@ -24,7 +46,9 @@ export default function ManagerPage() {
   const [loading, setLoading] = useState(true);
 
   const today = getTodayDateStringIST();
-  const pastSixPM = isPast6PMIST();
+  const pastFlagTime = isPastFlagTimeIST();
+  // Admins see a read-only dashboard; managers can tick tasks directly.
+  const interactive = user?.user_role === "manager";
 
   useEffect(() => {
     if (!ready) return;
@@ -42,21 +66,44 @@ export default function ManagerPage() {
 
   const visibleTasks = useMemo(() => tasks.filter(isTaskVisibleToday), [tasks]);
 
-  const completionByTaskId = useMemo(() => {
+  const completionByKey = useMemo(() => {
     const map = new Map<string, CompletionWithUser>();
-    for (const c of completions) map.set(c.task_id, c);
+    for (const c of completions) map.set(completionKey(c.task_id, c.time_of_day), c);
     return map;
   }, [completions]);
 
-  const total = visibleTasks.length;
-  const done = visibleTasks.filter((t) => completionByTaskId.has(t.id)).length;
-  const pending = total - done;
-  const flagged = pastSixPM
-    ? visibleTasks.filter((t) => !completionByTaskId.has(t.id)).length
-    : 0;
+  const allInstances = useMemo(() => toInstances(visibleTasks), [visibleTasks]);
 
-  const kitchenTasks = visibleTasks.filter((t) => t.category === "kitchen");
-  const floorTasks = visibleTasks.filter((t) => t.category === "floor");
+  const total = allInstances.length;
+  const done = allInstances.filter((i) =>
+    completionByKey.has(completionKey(i.task.id, i.timeOfDay))
+  ).length;
+  const pending = total - done;
+  const flagged = pastFlagTime ? pending : 0;
+
+  async function handleComplete(instance: TaskInstance) {
+    if (!user || !interactive) return;
+    const key = completionKey(instance.task.id, instance.timeOfDay);
+    if (completionByKey.has(key)) return;
+    const optimistic: CompletionWithUser = {
+      id: `optimistic-${key}`,
+      task_id: instance.task.id,
+      completed_by: user.id,
+      completed_at: new Date().toISOString(),
+      date: today,
+      time_of_day: instance.timeOfDay,
+      users: { name: user.name },
+    };
+    setCompletions((prev) => [...prev, optimistic]);
+    try {
+      const saved = await addCompletion(instance.task.id, user.id, today, instance.timeOfDay);
+      setCompletions((prev) =>
+        prev.map((c) => (c.id === optimistic.id ? { ...saved, users: { name: user.name } } : c))
+      );
+    } catch {
+      setCompletions((prev) => prev.filter((c) => c.id !== optimistic.id));
+    }
+  }
 
   if (!ready || !user) return null;
 
@@ -86,51 +133,41 @@ export default function ManagerPage() {
         {loading ? (
           <p className="py-8 text-center text-brown/50">Loading…</p>
         ) : (
-          <>
-            <section className="flex flex-col gap-2">
-              <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brown">
-                <span className="h-1.5 w-1.5 rounded-full bg-pink" />
-                Kitchen
-              </h2>
-              <div className="flex flex-col gap-2">
-                {kitchenTasks.map((task) => {
-                  const completion = completionByTaskId.get(task.id);
-                  return (
-                    <TaskRow
-                      key={task.id}
-                      title={task.title}
-                      done={!!completion}
-                      flagged={pastSixPM && !completion}
-                      doneByName={completion?.users?.name}
-                      doneAtLabel={completion ? formatTimeIST(completion.completed_at) : undefined}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="flex flex-col gap-2">
-              <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brown">
-                <span className="h-1.5 w-1.5 rounded-full bg-sage" />
-                Floor
-              </h2>
-              <div className="flex flex-col gap-2">
-                {floorTasks.map((task) => {
-                  const completion = completionByTaskId.get(task.id);
-                  return (
-                    <TaskRow
-                      key={task.id}
-                      title={task.title}
-                      done={!!completion}
-                      flagged={pastSixPM && !completion}
-                      doneByName={completion?.users?.name}
-                      doneAtLabel={completion ? formatTimeIST(completion.completed_at) : undefined}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          </>
+          CATEGORIES.map((cat) => {
+            const instances = toInstances(visibleTasks.filter((t) => t.category === cat.id));
+            if (instances.length === 0) return null;
+            return (
+              <section key={cat.id} className="flex flex-col gap-2">
+                <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brown">
+                  <span className="h-1.5 w-1.5 rounded-full bg-pink" />
+                  {cat.label}
+                </h2>
+                <div className="flex flex-col gap-2">
+                  {instances.map((instance) => {
+                    const completion = completionByKey.get(
+                      completionKey(instance.task.id, instance.timeOfDay)
+                    );
+                    return (
+                      <TaskRow
+                        key={completionKey(instance.task.id, instance.timeOfDay)}
+                        title={instance.task.title}
+                        sessionLabel={instance.sessionLabel}
+                        done={!!completion}
+                        flagged={pastFlagTime && !completion}
+                        doneByName={completion?.users?.name}
+                        doneAtLabel={
+                          completion ? formatTimeIST(completion.completed_at) : undefined
+                        }
+                        note={completion?.notes}
+                        interactive={interactive}
+                        onComplete={() => handleComplete(instance)}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })
         )}
       </div>
 

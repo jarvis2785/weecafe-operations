@@ -3,21 +3,30 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, clearSession } from "@/lib/auth";
-import { Role, SessionUser } from "@/lib/types";
+import { SessionUser } from "@/lib/types";
 
-export function useSession(requiredRole?: Role) {
+type Area = "staff" | "manager";
+
+export function useSession(area?: Area) {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const session = getSession();
-    if (!session) {
+    // Sessions saved before the roles migration lack user_role — force re-login.
+    if (!session || !session.user_role) {
+      clearSession();
       router.replace("/");
       return;
     }
-    if (requiredRole && session.role !== requiredRole) {
-      router.replace(session.role === "manager" ? "/manager" : "/staff");
+    const home = session.user_role === "staff" ? "/staff" : "/manager";
+    if (area === "staff" && session.user_role !== "staff") {
+      router.replace(home);
+      return;
+    }
+    if (area === "manager" && session.user_role === "staff") {
+      router.replace(home);
       return;
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect

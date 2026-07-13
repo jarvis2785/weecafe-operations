@@ -1,4 +1,4 @@
-import { Task } from "./types";
+import { Task, TimeOfDay } from "./types";
 
 const IST_TZ = "Asia/Kolkata";
 const WEEKDAY_INDEX: Record<string, number> = {
@@ -45,8 +45,14 @@ export function getISTWeekday(): number {
   return getISTParts().weekday;
 }
 
-export function isPast6PMIST(): boolean {
-  return getISTParts().hour >= 18;
+// Flag time is 1 PM IST (07:30 UTC): incomplete tasks are highlighted after this.
+export function isPastFlagTimeIST(): boolean {
+  return getISTParts().hour >= 13;
+}
+
+// Morning session: 12 AM – 11:59 AM IST. Evening session: 12 PM – 11:59 PM IST.
+export function getCurrentSessionIST(): TimeOfDay {
+  return getISTParts().hour < 12 ? "morning" : "evening";
 }
 
 export function parseUtcTimestamp(isoString: string): Date {
@@ -80,12 +86,12 @@ export function formatDateDisplayIST(dateStr?: string): string {
 }
 
 export function isTaskVisibleToday(task: Task): boolean {
-  if (task.frequency === "daily") return true;
+  if (task.frequency === "daily" || task.frequency === "twice_daily") return true;
   return task.weekly_day === getISTWeekday();
 }
 
 export function isTaskVisibleOnDate(task: Task, dateStr: string): boolean {
-  if (task.frequency === "daily") return true;
+  if (task.frequency === "daily" || task.frequency === "twice_daily") return true;
   const weekday = new Date(`${dateStr}T12:00:00`).getDay();
   return task.weekly_day === weekday;
 }

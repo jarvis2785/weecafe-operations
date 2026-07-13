@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { Task, Completion, CompletionWithUser } from "./types";
+import { Task, Completion, CompletionWithUser, TimeOfDay } from "./types";
 
 export async function fetchActiveTasks(): Promise<Task[]> {
   const { data, error } = await supabase
@@ -48,15 +48,21 @@ export async function fetchCompletionsInRange(
 export async function addCompletion(
   taskId: string,
   userId: string,
-  date: string
+  date: string,
+  timeOfDay: TimeOfDay | null = null
 ): Promise<Completion> {
   const { data, error } = await supabase
     .from("completions")
-    .insert({ task_id: taskId, completed_by: userId, date })
+    .insert({ task_id: taskId, completed_by: userId, date, time_of_day: timeOfDay })
     .select()
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function updateCompletionNotes(id: string, notes: string): Promise<void> {
+  const { error } = await supabase.from("completions").update({ notes }).eq("id", id);
+  if (error) throw error;
 }
 
 export async function deleteCompletion(id: string): Promise<void> {

@@ -8,7 +8,8 @@ import BottomNav from "@/components/BottomNav";
 import LogoutButton from "@/components/LogoutButton";
 import { fetchActiveTasks, fetchCompletionsInRange } from "@/lib/tasks";
 import { getTodayDateStringIST, isTaskVisibleOnDate } from "@/lib/date";
-import { Task, Completion } from "@/lib/types";
+import { CATEGORIES } from "@/lib/constants";
+import { Task, Completion, CategoryId } from "@/lib/types";
 
 type Mode = "weekly" | "monthly";
 
@@ -39,23 +40,33 @@ export default function ReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
+  // Keyed by "taskId|timeOfDay" so twice-daily sessions count separately.
   const completionsByDate = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const c of completions) {
       if (!map.has(c.date)) map.set(c.date, new Set());
-      map.get(c.date)!.add(c.task_id);
+      map.get(c.date)!.add(`${c.task_id}|${c.time_of_day ?? ""}`);
     }
     return map;
   }, [completions]);
 
-  function pctFor(dateStr: string, category?: "kitchen" | "floor") {
+  function pctFor(dateStr: string, category?: CategoryId) {
     const dayTasks = tasks.filter(
       (t) => isTaskVisibleOnDate(t, dateStr) && (!category || t.category === category)
     );
     if (dayTasks.length === 0) return null;
     const done = completionsByDate.get(dateStr) ?? new Set();
-    const doneCount = dayTasks.filter((t) => done.has(t.id)).length;
-    return Math.round((doneCount / dayTasks.length) * 100);
+    let requiredUnits = 0;
+    let doneUnits = 0;
+    for (const t of dayTasks) {
+      const keys =
+        t.frequency === "twice_daily"
+          ? [`${t.id}|morning`, `${t.id}|evening`]
+          : [`${t.id}|`];
+      requiredUnits += keys.length;
+      doneUnits += keys.filter((k) => done.has(k)).length;
+    }
+    return Math.round((doneUnits / requiredUnits) * 100);
   }
 
   const weekDates = useMemo(() => {
@@ -113,8 +124,6 @@ export default function ReportsPage() {
         ) : mode === "weekly" ? (
           <div className="card flex flex-col gap-4 p-4">
             {weekDates.map((d) => {
-              const kitchenPct = pctFor(d, "kitchen") ?? 0;
-              const floorPct = pctFor(d, "floor") ?? 0;
               const isToday = d === today;
               return (
                 <div key={d} className="flex flex-col gap-1.5">
@@ -123,32 +132,25 @@ export default function ReportsPage() {
                       {format(new Date(`${d}T12:00:00`), "EEE, MMM d")}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-14 text-xs text-brown/50">Kitchen</span>
-                    <div className="h-[8px] flex-1 overflow-hidden rounded-full bg-[#F0EDE8]">
-                      <motion.div
-                        className="h-full rounded-full"
-                        style={{ backgroundColor: kitchenPct === 100 ? "#7D9B76" : "#E8B4B8" }}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${kitchenPct}%` }}
-                        transition={{ duration: 0.6, ease: "easeOut" }}
-                      />
-                    </div>
-                    <span className="w-10 text-right text-xs text-brown/50">{kitchenPct}%</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-14 text-xs text-brown/50">Floor</span>
-                    <div className="h-[8px] flex-1 overflow-hidden rounded-full bg-[#F0EDE8]">
-                      <motion.div
-                        className="h-full rounded-full"
-                        style={{ backgroundColor: floorPct === 100 ? "#7D9B76" : "#E8B4B8" }}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${floorPct}%` }}
-                        transition={{ duration: 0.6, ease: "easeOut" }}
-                      />
-                    </div>
-                    <span className="w-10 text-right text-xs text-brown/50">{floorPct}%</span>
-                  </div>
+                  {CATEGORIES.map((cat) => {
+                    const pct = pctFor(d, cat.id);
+                    if (pct === null) return null;
+                    return (
+                      <div key={cat.id} className="flex items-center gap-2">
+                        <span className="w-28 truncate text-xs text-brown/50">{cat.label}</span>
+                        <div className="h-[8px] flex-1 overflow-hidden rounded-full bg-[#F0EDE8]">
+                          <motion.div
+                            className="h-full rounded-full"
+                            style={{ backgroundColor: pct === 100 ? "#7D9B76" : "#E8B4B8" }}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${pct}%` }}
+                            transition={{ duration: 0.6, ease: "easeOut" }}
+                          />
+                        </div>
+                        <span className="w-10 text-right text-xs text-brown/50">{pct}%</span>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}

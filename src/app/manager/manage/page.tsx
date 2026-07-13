@@ -6,7 +6,8 @@ import { useSession } from "@/hooks/useSession";
 import BottomNav from "@/components/BottomNav";
 import LogoutButton from "@/components/LogoutButton";
 import { fetchAllTasks, updateTask, createTask } from "@/lib/tasks";
-import { Task, Category, Frequency } from "@/lib/types";
+import { CATEGORIES, FREQUENCIES, categoryLabel } from "@/lib/constants";
+import { Task, CategoryId, Frequency } from "@/lib/types";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -19,7 +20,7 @@ export default function ManagePage() {
   const [showForm, setShowForm] = useState(false);
 
   const [newTitle, setNewTitle] = useState("");
-  const [newCategory, setNewCategory] = useState<Category>("kitchen");
+  const [newCategory, setNewCategory] = useState<CategoryId>("kitchen");
   const [newFrequency, setNewFrequency] = useState<Frequency>("daily");
   const [newWeeklyDay, setNewWeeklyDay] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -103,19 +104,25 @@ export default function ManagePage() {
             />
             <select
               value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value as Category)}
+              onChange={(e) => setNewCategory(e.target.value as CategoryId)}
               className="min-h-[48px] rounded-xl border border-pink px-3 text-brown outline-none transition-colors duration-150 ease focus:border-brown"
             >
-              <option value="kitchen">Kitchen</option>
-              <option value="floor">Floor</option>
+              {CATEGORIES.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
             </select>
             <select
               value={newFrequency}
               onChange={(e) => setNewFrequency(e.target.value as Frequency)}
               className="min-h-[48px] rounded-xl border border-pink px-3 text-brown outline-none transition-colors duration-150 ease focus:border-brown"
             >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
+              {FREQUENCIES.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
             </select>
             {newFrequency === "weekly" && (
               <select
@@ -175,7 +182,8 @@ export default function ManagePage() {
                     </button>
                   )}
                   <span className="text-xs text-brown/50">
-                    {task.category} · {task.frequency}
+                    {categoryLabel(task.category)} ·{" "}
+                    {FREQUENCIES.find((f) => f.id === task.frequency)?.label ?? task.frequency}
                     {task.frequency === "weekly" && task.weekly_day !== null
                       ? ` (${WEEKDAYS[task.weekly_day]})`
                       : ""}

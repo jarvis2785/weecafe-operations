@@ -16,8 +16,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     const session = getSession();
-    if (session) {
-      router.replace(session.role === "manager" ? "/manager" : "/staff");
+    if (session && session.user_role) {
+      router.replace(session.user_role === "staff" ? "/staff" : "/manager");
     }
   }, [router]);
 
@@ -48,8 +48,14 @@ export default function LoginPage() {
         return;
       }
 
-      saveSession({ id: data.id, name: data.name, role: data.role });
-      router.replace(data.role === "manager" ? "/manager" : "/staff");
+      saveSession({
+        id: data.id,
+        name: data.name,
+        role: data.role,
+        user_role: data.user_role,
+        accessible_categories: data.accessible_categories ?? [],
+      });
+      router.replace(data.user_role === "staff" ? "/staff" : "/manager");
     })();
 
     return () => {

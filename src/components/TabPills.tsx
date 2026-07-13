@@ -1,28 +1,37 @@
-import { Category } from "@/lib/types";
+"use client";
+
+import { useRef } from "react";
+import { CategoryId } from "@/lib/types";
 
 interface TabPillsProps {
-  active: Category;
-  onChange: (category: Category) => void;
+  categories: { id: CategoryId; label: string }[];
+  active: CategoryId;
+  onChange: (category: CategoryId) => void;
 }
 
-const TABS: { key: Category; label: string }[] = [
-  { key: "kitchen", label: "Kitchen" },
-  { key: "floor", label: "Floor" },
-];
+export default function TabPills({ categories, active, onChange }: TabPillsProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
 
-export default function TabPills({ active, onChange }: TabPillsProps) {
+  function handleSelect(id: CategoryId, target: HTMLButtonElement) {
+    onChange(id);
+    target.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }
+
   return (
-    <div className="flex gap-3">
-      {TABS.map((tab) => (
+    <div
+      ref={containerRef}
+      className="scrollbar-hide -mx-5 flex gap-3 overflow-x-auto whitespace-nowrap px-5"
+    >
+      {categories.map((cat) => (
         <button
-          key={tab.key}
+          key={cat.id}
           type="button"
-          onClick={() => onChange(tab.key)}
-          className={`min-h-[48px] flex-1 rounded-xl text-base font-medium shadow-[0_1px_3px_rgba(61,28,28,0.08),0_4px_12px_rgba(61,28,28,0.04)] transition-all duration-150 ease active:scale-[0.98] ${
-            active === tab.key ? "bg-brown text-white" : "bg-white text-brown"
+          onClick={(e) => handleSelect(cat.id, e.currentTarget)}
+          className={`min-h-[48px] shrink-0 rounded-xl px-5 text-base font-medium shadow-[0_1px_3px_rgba(61,28,28,0.08),0_4px_12px_rgba(61,28,28,0.04)] transition-all duration-150 ease active:scale-[0.98] ${
+            active === cat.id ? "bg-brown text-white" : "bg-white text-brown"
           }`}
         >
-          {tab.label}
+          {cat.label}
         </button>
       ))}
     </div>
