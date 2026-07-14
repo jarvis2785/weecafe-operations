@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useSession } from "@/hooks/useSession";
 import BottomNav from "@/components/BottomNav";
@@ -11,6 +11,11 @@ import { Task, CategoryId, Frequency } from "@/lib/types";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+const FILTER_PILLS: { id: CategoryId | "all"; label: string }[] = [
+  { id: "all", label: "All" },
+  ...CATEGORIES,
+];
+
 export default function ManagePage() {
   const { user, ready, logout } = useSession("manager");
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -18,6 +23,7 @@ export default function ManagePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [filter, setFilter] = useState<CategoryId | "all">("all");
 
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState<CategoryId>("kitchen");
@@ -68,6 +74,77 @@ export default function ManagePage() {
     setShowForm(false);
     setSaving(false);
     await loadTasks();
+  }
+
+  const countByCategory = useMemo(() => {
+    const map = new Map<CategoryId, number>();
+    for (const t of tasks) map.set(t.category, (map.get(t.category) ?? 0) + 1);
+    return map;
+  }, [tasks]);
+
+  const filteredTasks = filter === "all" ? tasks : tasks.filter((t) => t.category === filter);
+
+  const groupedByCategory = useMemo(() => {
+    const map = new Map<CategoryId, Task[]>();
+    for (const cat of CATEGORIES) {
+      const catTasks = tasks.filter((t) => t.category === cat.id);
+      if (catTasks.length > 0) map.set(cat.id, catTasks);
+    }
+    return map;
+  }, [tasks]);
+
+  function renderTaskRow(task: Task) {
+    return (
+      <div
+        key={task.id}
+        className={`card flex min-h-[64px] items-center justify-between gap-3 px-4 py-3 ${
+          task.is_active ? "" : "opacity-50"
+        }`}
+      >
+        <div className="flex flex-1 flex-col gap-0.5">
+          {editingId === task.id ? (
+            <input
+              autoFocus
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={() => saveTitle(task)}
+              onKeyDown={(e) => e.key === "Enter" && saveTitle(task)}
+              className="min-h-[40px] rounded-lg border border-pink px-2 text-brown outline-none focus:border-brown"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingId(task.id);
+                setEditValue(task.title);
+              }}
+              className="text-left text-[15px] font-medium text-brown"
+            >
+              {task.title}
+            </button>
+          )}
+          <span className="text-xs text-brown/50">
+            {categoryLabel(task.category)} ·{" "}
+            {FREQUENCIES.find((f) => f.id === task.frequency)?.label ?? task.frequency}
+            {task.frequency === "weekly" && task.weekly_day !== null
+              ? ` (${WEEKDAYS[task.weekly_day]})`
+              : ""}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => toggleActive(task)}
+          className={`shrink-0 whitespace-nowrap rounded-lg px-[14px] py-[10px] text-xs font-medium transition-all duration-150 ease active:scale-95 ${
+            task.is_active
+              ? "bg-[#E8F5E9] text-[#2E7D32] hover:bg-[#dcefdd]"
+              : "bg-[#FFF3E0] text-[#E65100] hover:bg-[#ffe9c7]"
+          }`}
+        >
+          {task.is_active ? "Active" : "Inactive"}
+        </button>
+      </div>
+    );
   }
 
   if (!ready || !user) return null;
@@ -148,62 +225,44 @@ export default function ManagePage() {
           </div>
         )}
 
-        {loading ? (
-          <p className="py-8 text-center text-brown/50">Loading…</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className={`card flex min-h-[64px] items-center justify-between gap-3 px-4 py-3 ${
-                  task.is_active ? "" : "opacity-50"
+        <div className="scrollbar-hide -mx-5 flex gap-3 overflow-x-auto whitespace-nowrap px-5">
+          {FILTER_PILLS.map((pill) => {
+            const count = pill.id === "all" ? null : countByCategory.get(pill.id) ?? 0;
+            return (
+              <button
+                key={pill.id}
+                type="button"
+                onClick={() => setFilter(pill.id)}
+                className={`min-h-[48px] shrink-0 rounded-xl px-5 text-base font-medium transition-all duration-150 ease active:scale-[0.98] ${
+                  filter === pill.id
+                    ? "bg-brown text-cream"
+                    : "border border-brown/15 bg-cream text-brown"
                 }`}
               >
-                <div className="flex flex-1 flex-col gap-0.5">
-                  {editingId === task.id ? (
-                    <input
-                      autoFocus
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={() => saveTitle(task)}
-                      onKeyDown={(e) => e.key === "Enter" && saveTitle(task)}
-                      className="min-h-[40px] rounded-lg border border-pink px-2 text-brown outline-none focus:border-brown"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingId(task.id);
-                        setEditValue(task.title);
-                      }}
-                      className="text-left text-[15px] font-medium text-brown"
-                    >
-                      {task.title}
-                    </button>
-                  )}
-                  <span className="text-xs text-brown/50">
-                    {categoryLabel(task.category)} ·{" "}
-                    {FREQUENCIES.find((f) => f.id === task.frequency)?.label ?? task.frequency}
-                    {task.frequency === "weekly" && task.weekly_day !== null
-                      ? ` (${WEEKDAYS[task.weekly_day]})`
-                      : ""}
-                  </span>
-                </div>
+                {pill.label}
+                {filter === "all" && count !== null ? ` (${count})` : ""}
+              </button>
+            );
+          })}
+        </div>
 
-                <button
-                  type="button"
-                  onClick={() => toggleActive(task)}
-                  className={`shrink-0 whitespace-nowrap rounded-lg px-[14px] py-[10px] text-xs font-medium transition-all duration-150 ease active:scale-95 ${
-                    task.is_active
-                      ? "bg-[#E8F5E9] text-[#2E7D32] hover:bg-[#dcefdd]"
-                      : "bg-[#FFF3E0] text-[#E65100] hover:bg-[#ffe9c7]"
-                  }`}
-                >
-                  {task.is_active ? "Active" : "Inactive"}
-                </button>
+        {loading ? (
+          <p className="py-8 text-center text-brown/50">Loading…</p>
+        ) : filter === "all" ? (
+          <div className="flex flex-col gap-2">
+            {CATEGORIES.filter((cat) => groupedByCategory.has(cat.id)).map((cat) => (
+              <div key={cat.id} className="flex flex-col gap-2">
+                <h2 className="mt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brown/50">
+                  {cat.label}
+                </h2>
+                {groupedByCategory.get(cat.id)!.map(renderTaskRow)}
               </div>
             ))}
           </div>
+        ) : filteredTasks.length === 0 ? (
+          <p className="py-8 text-center text-brown/50">No tasks in this category.</p>
+        ) : (
+          <div className="flex flex-col gap-2">{filteredTasks.map(renderTaskRow)}</div>
         )}
       </div>
 
