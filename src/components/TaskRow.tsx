@@ -32,14 +32,51 @@ export default function TaskRow({
   onComplete,
   onUndo,
 }: TaskRowProps) {
+  const titleBlock = (
+    <span className="text-base font-medium text-brown">
+      {title}
+      {sessionLabel && (
+        <span className="ml-2 text-[12px] font-normal text-brown/50">{sessionLabel}</span>
+      )}
+    </span>
+  );
+
+  const rowClasses = `card flex min-h-[56px] items-center justify-between gap-3 border-l-[3px] px-4 py-3 text-left ${
+    done
+      ? "border-l-sage bg-[#F0F5EE]"
+      : flagged
+      ? "border-l-[#DC2626] bg-[#FDF1F1]"
+      : "border-l-transparent"
+  }`;
+
+  // ADMIN: pure read-only status line. No checkbox, no click handler, no
+  // hover/active state, no undo — just what happened and when.
+  if (!interactive) {
+    return (
+      <div className={rowClasses}>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          {titleBlock}
+          {done && note && <span className="text-[13px] italic text-brown/60">{note}</span>}
+        </div>
+        {done ? (
+          <span className="shrink-0 text-[13px] font-medium text-sage">
+            ✓ Done by {doneByName} at {doneAtLabel}
+          </span>
+        ) : flagged ? (
+          <span className="shrink-0 rounded-lg bg-[#DC2626]/10 px-2.5 py-1 text-[13px] font-medium text-[#DC2626]">
+            ⚠ Pending
+          </span>
+        ) : (
+          <span className="shrink-0 text-[13px] font-medium text-brown/40">Pending</span>
+        )}
+      </div>
+    );
+  }
+
+  // MANAGER: full checkbox + tap-to-complete + undo.
   const content = (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span className="text-base font-medium text-brown">
-        {title}
-        {sessionLabel && (
-          <span className="ml-2 text-[12px] font-normal text-brown/50">{sessionLabel}</span>
-        )}
-      </span>
+      {titleBlock}
       {done && (
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-[13px] font-medium text-sage">
@@ -79,15 +116,7 @@ export default function TaskRow({
     <div className="h-8 w-8 shrink-0 rounded-full border-2 border-pink" />
   );
 
-  const rowClasses = `card flex min-h-[56px] items-center justify-between gap-3 border-l-[3px] px-4 py-3 text-left ${
-    done
-      ? "border-l-sage bg-[#F0F5EE]"
-      : flagged
-      ? "border-l-[#DC2626] bg-[#FDF1F1]"
-      : "border-l-transparent"
-  }`;
-
-  if (interactive && !done) {
+  if (!done) {
     return (
       <motion.button
         type="button"
@@ -104,10 +133,10 @@ export default function TaskRow({
 
   return (
     <motion.div
-      initial={done ? { scale: 0.97 } : false}
+      initial={{ scale: 0.97 }}
       animate={{ scale: 1 }}
       transition={{ duration: 0.25 }}
-      className={`${rowClasses} cursor-default`}
+      className={rowClasses}
     >
       {content}
       {checkbox}
