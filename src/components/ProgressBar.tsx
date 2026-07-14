@@ -1,16 +1,25 @@
 interface ProgressBarProps {
   done: number;
   total: number;
+  categoryLabel?: string;
 }
 
-export default function ProgressBar({ done, total }: ProgressBarProps) {
+export default function ProgressBar({ done, total, categoryLabel }: ProgressBarProps) {
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
 
   return (
     <div className="safe-bottom sticky bottom-0 border-t border-pink/40 bg-cream px-5 pt-3">
       <div className="mb-2 flex items-center justify-between text-sm font-semibold text-brown">
         <span>
-          {done} of {total} tasks complete
+          {categoryLabel ? (
+            <>
+              {done} of {total} done — {categoryLabel}
+            </>
+          ) : (
+            <>
+              {done} of {total} tasks complete
+            </>
+          )}
         </span>
         <span>{pct}%</span>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { CategoryId } from "@/lib/types";
 
 interface TabPillsProps {
@@ -10,25 +10,32 @@ interface TabPillsProps {
 }
 
 export default function TabPills({ categories, active, onChange }: TabPillsProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRefs = useRef<Partial<Record<CategoryId, HTMLButtonElement | null>>>({});
 
-  function handleSelect(id: CategoryId, target: HTMLButtonElement) {
-    onChange(id);
-    target.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-  }
+  // Runs on every active-category change, whether it came from a tap here or
+  // a swipe gesture on the task panel, so the pill always scrolls into view.
+  useEffect(() => {
+    buttonRefs.current[active]?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [active]);
 
   return (
-    <div
-      ref={containerRef}
-      className="scrollbar-hide -mx-5 flex gap-3 overflow-x-auto whitespace-nowrap px-5"
-    >
+    <div className="scrollbar-hide sticky top-0 z-10 -mx-5 flex gap-3 overflow-x-auto whitespace-nowrap bg-cream px-5 py-1">
       {categories.map((cat) => (
         <button
           key={cat.id}
+          ref={(el) => {
+            buttonRefs.current[cat.id] = el;
+          }}
           type="button"
-          onClick={(e) => handleSelect(cat.id, e.currentTarget)}
-          className={`min-h-[48px] shrink-0 rounded-xl px-5 text-base font-medium shadow-[0_1px_3px_rgba(61,28,28,0.08),0_4px_12px_rgba(61,28,28,0.04)] transition-all duration-150 ease active:scale-[0.98] ${
-            active === cat.id ? "bg-brown text-white" : "bg-white text-brown"
+          onClick={() => onChange(cat.id)}
+          className={`min-h-[48px] shrink-0 rounded-xl px-5 text-base font-medium transition-all duration-150 ease active:scale-[0.98] ${
+            active === cat.id
+              ? "bg-brown text-cream"
+              : "border border-brown/15 bg-cream text-brown"
           }`}
         >
           {cat.label}

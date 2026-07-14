@@ -7,6 +7,7 @@ import TabPills from "@/components/TabPills";
 import TaskCard from "@/components/TaskCard";
 import ProgressBar from "@/components/ProgressBar";
 import LogoutButton from "@/components/LogoutButton";
+import SwipeableCategoryPanel from "@/components/SwipeableCategoryPanel";
 import {
   fetchActiveTasks,
   fetchCompletionsForDate,
@@ -23,19 +24,17 @@ import {
   getCurrentSessionIST,
 } from "@/lib/date";
 import { CATEGORIES } from "@/lib/constants";
+import { completionKey } from "@/lib/taskInstances";
 import { Task, Completion, CategoryId, TimeOfDay } from "@/lib/types";
 
 const UNDO_WINDOW_MS = 2 * 60 * 1000;
-
-function completionKey(taskId: string, timeOfDay: TimeOfDay | null): string {
-  return `${taskId}|${timeOfDay ?? ""}`;
-}
 
 export default function StaffPage() {
   const { user, ready, logout } = useSession("staff");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [completions, setCompletions] = useState<Completion[]>([]);
   const [category, setCategory] = useState<CategoryId | null>(null);
+  const [direction, setDirection] = useState(1);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
 
@@ -68,6 +67,21 @@ export default function StaffPage() {
 
   const activeCategory = category ?? accessibleCategories[0]?.id ?? null;
 
+  function selectCategory(newId: CategoryId) {
+    const oldIndex = accessibleCategories.findIndex((c) => c.id === activeCategory);
+    const newIndex = accessibleCategories.findIndex((c) => c.id === newId);
+    setDirection(newIndex >= oldIndex ? 1 : -1);
+    setCategory(newId);
+  }
+
+  function goToOffset(offset: number) {
+    const idx = accessibleCategories.findIndex((c) => c.id === activeCategory);
+    const newIdx = idx + offset;
+    if (newIdx < 0 || newIdx >= accessibleCategories.length) return;
+    setDirection(offset > 0 ? 1 : -1);
+    setCategory(accessibleCategories[newIdx].id);
+  }
+
   const visibleTasks = useMemo(
     () =>
       tasks.filter(
@@ -82,27 +96,24 @@ export default function StaffPage() {
     return map;
   }, [completions]);
 
-  // Progress counts every required session today: twice-daily tasks need both
-  // morning and evening, everything else needs one completion.
-  const { totalUnits, doneUnits } = useMemo(() => {
-    let total = 0;
-    let done = 0;
-    for (const t of visibleTasks) {
-      if (t.frequency === "twice_daily") {
-        total += 2;
-        if (completionByKey.has(completionKey(t.id, "morning"))) done++;
-        if (completionByKey.has(completionKey(t.id, "evening"))) done++;
-      } else {
-        total += 1;
-        if (completionByKey.has(completionKey(t.id, null))) done++;
-      }
-    }
-    return { totalUnits: total, doneUnits: done };
-  }, [visibleTasks, completionByKey]);
-
   const categoryTasks = visibleTasks.filter((t) => t.category === activeCategory);
   const regularTasks = categoryTasks.filter((t) => t.frequency !== "twice_daily");
   const twiceDailyTasks = categoryTasks.filter((t) => t.frequency === "twice_daily");
+
+  // Progress is scoped to the current category only. Twice-daily tasks need
+  // both morning and evening sessions to count as fully done.
+  let totalUnits = 0;
+  let doneUnits = 0;
+  for (const t of categoryTasks) {
+    if (t.frequency === "twice_daily") {
+      totalUnits += 2;
+      if (completionByKey.has(completionKey(t.id, "morning"))) doneUnits++;
+      if (completionByKey.has(completionKey(t.id, "evening"))) doneUnits++;
+    } else {
+      totalUnits += 1;
+      if (completionByKey.has(completionKey(t.id, null))) doneUnits++;
+    }
+  }
 
   async function handleComplete(taskId: string, timeOfDay: TimeOfDay | null) {
     if (!user) return;
@@ -125,11 +136,12 @@ export default function StaffPage() {
 
   async function handleUndo(completionId: string) {
     const removed = completions.find((c) => c.id === completionId);
+    if (!removed) return;
     setCompletions((prev) => prev.filter((c) => c.id !== completionId));
     try {
-      await deleteCompletion(completionId);
+      await deleteCompletion(removed.id, removed.task_id, removed.date, removed.completed_by);
     } catch {
-      if (removed) setCompletions((prev) => [...prev, removed]);
+      setCompletions((prev) => [...prev, removed]);
     }
   }
 
@@ -149,9 +161,15 @@ export default function StaffPage() {
   function renderTask(task: Task, timeOfDay: TimeOfDay | null) {
     const completion = completionByKey.get(completionKey(task.id, timeOfDay));
 
+    // Only the person who completed it can undo — relevant if categories
+    // are ever shared between staff members.
     let canUndo = false;
     let secondsRemaining: number | null = null;
-    if (completion && !completion.id.startsWith("optimistic-")) {
+    if (
+      completion &&
+      !completion.id.startsWith("optimistic-") &&
+      completion.completed_by === user?.id
+    ) {
       const elapsed = now - parseUtcTimestamp(completion.completed_at).getTime();
       if (elapsed < UNDO_WINDOW_MS) {
         canUndo = true;
@@ -175,6 +193,12 @@ export default function StaffPage() {
       />
     );
   }
+
+  const activeCategoryLabel = accessibleCategories
+    .find((c) => c.id === activeCategory)
+    ?.label.split(" ")
+    .slice(1)
+    .join(" ");
 
   if (!ready || !user) return null;
 
@@ -203,7 +227,7 @@ export default function StaffPage() {
           <TabPills
             categories={accessibleCategories}
             active={activeCategory}
-            onChange={setCategory}
+            onChange={selectCategory}
           />
         )}
         {accessibleCategories.length === 1 && (
@@ -217,23 +241,30 @@ export default function StaffPage() {
         ) : categoryTasks.length === 0 ? (
           <p className="py-8 text-center text-brown/50">No tasks scheduled today.</p>
         ) : (
-          <div className="flex flex-col gap-3">
-            {regularTasks.map((task) => renderTask(task, null))}
+          activeCategory && (
+            <SwipeableCategoryPanel
+              categoryKey={activeCategory}
+              direction={direction}
+              onSwipePrev={() => goToOffset(-1)}
+              onSwipeNext={() => goToOffset(1)}
+            >
+              {regularTasks.map((task) => renderTask(task, null))}
 
-            {twiceDailyTasks.length > 0 && (
-              <>
-                <h3 className="mt-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brown">
-                  <span className="h-1.5 w-1.5 rounded-full bg-pink" />
-                  {session === "morning" ? "Morning ☀️" : "Evening 🌙"}
-                </h3>
-                {twiceDailyTasks.map((task) => renderTask(task, session))}
-              </>
-            )}
-          </div>
+              {twiceDailyTasks.length > 0 && (
+                <>
+                  <h3 className="mt-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brown">
+                    <span className="h-1.5 w-1.5 rounded-full bg-pink" />
+                    {session === "morning" ? "Morning ☀️" : "Evening 🌙"}
+                  </h3>
+                  {twiceDailyTasks.map((task) => renderTask(task, session))}
+                </>
+              )}
+            </SwipeableCategoryPanel>
+          )
         )}
       </div>
 
-      <ProgressBar done={doneUnits} total={totalUnits} />
+      <ProgressBar done={doneUnits} total={totalUnits} categoryLabel={activeCategoryLabel} />
     </motion.div>
   );
 }

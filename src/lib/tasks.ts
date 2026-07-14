@@ -65,8 +65,21 @@ export async function updateCompletionNotes(id: string, notes: string): Promise<
   if (error) throw error;
 }
 
-export async function deleteCompletion(id: string): Promise<void> {
-  const { error } = await supabase.from("completions").delete().eq("id", id);
+export async function deleteCompletion(
+  id: string,
+  taskId: string,
+  date: string,
+  completedBy: string
+): Promise<void> {
+  // Scoped by id plus task/date/user as a defense-in-depth safety net, so an
+  // undo can only ever remove the exact completion it was shown for.
+  const { error } = await supabase
+    .from("completions")
+    .delete()
+    .eq("id", id)
+    .eq("task_id", taskId)
+    .eq("date", date)
+    .eq("completed_by", completedBy);
   if (error) throw error;
 }
 

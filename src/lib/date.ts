@@ -55,6 +55,14 @@ export function getCurrentSessionIST(): TimeOfDay {
   return getISTParts().hour < 12 ? "morning" : "evening";
 }
 
+// e.g. 107 -> "1:47"
+export function formatCountdown(totalSeconds: number): string {
+  const clamped = Math.max(0, totalSeconds);
+  const m = Math.floor(clamped / 60);
+  const s = clamped % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export function parseUtcTimestamp(isoString: string): Date {
   // Postgres `timestamp without time zone` columns come back from
   // Supabase without a trailing "Z"/offset (e.g. "2026-07-06T16:11:22.565").

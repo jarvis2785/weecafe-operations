@@ -5,50 +5,39 @@ import { motion } from "framer-motion";
 import { useSession } from "@/hooks/useSession";
 import SummaryCard from "@/components/SummaryCard";
 import TaskRow from "@/components/TaskRow";
+import TabPills from "@/components/TabPills";
+import SwipeableCategoryPanel from "@/components/SwipeableCategoryPanel";
 import BottomNav from "@/components/BottomNav";
 import LogoutButton from "@/components/LogoutButton";
-import { fetchActiveTasks, fetchCompletionsForDate, addCompletion } from "@/lib/tasks";
+import { fetchActiveTasks, fetchCompletionsForDate, addCompletion, deleteCompletion } from "@/lib/tasks";
 import {
   getTodayDateStringIST,
   isTaskVisibleToday,
   isPastFlagTimeIST,
   formatDateDisplayIST,
   formatTimeIST,
+  parseUtcTimestamp,
 } from "@/lib/date";
 import { CATEGORIES } from "@/lib/constants";
-import { Task, CompletionWithUser, TimeOfDay } from "@/lib/types";
+import { TaskInstance, completionKey, toInstances } from "@/lib/taskInstances";
+import { Task, CompletionWithUser, CategoryId } from "@/lib/types";
 
-interface TaskInstance {
-  task: Task;
-  timeOfDay: TimeOfDay | null;
-  sessionLabel?: string;
-}
-
-function completionKey(taskId: string, timeOfDay: TimeOfDay | null): string {
-  return `${taskId}|${timeOfDay ?? ""}`;
-}
-
-function toInstances(tasks: Task[]): TaskInstance[] {
-  return tasks.flatMap((task): TaskInstance[] =>
-    task.frequency === "twice_daily"
-      ? [
-          { task, timeOfDay: "morning", sessionLabel: "☀️ Morning" },
-          { task, timeOfDay: "evening", sessionLabel: "🌙 Evening" },
-        ]
-      : [{ task, timeOfDay: null }]
-  );
-}
+const UNDO_WINDOW_MS = 2 * 60 * 1000;
 
 export default function ManagerPage() {
   const { user, ready, logout } = useSession("manager");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [completions, setCompletions] = useState<CompletionWithUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [category, setCategory] = useState<CategoryId | null>(null);
+  const [direction, setDirection] = useState(1);
+  const [now, setNow] = useState(() => Date.now());
 
   const today = getTodayDateStringIST();
   const pastFlagTime = isPastFlagTimeIST();
   // Admins see a read-only dashboard; managers can tick tasks directly.
   const interactive = user?.user_role === "manager";
+  const activeCategory = category ?? CATEGORIES[0].id;
 
   useEffect(() => {
     if (!ready) return;
@@ -63,6 +52,26 @@ export default function ManagerPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  function selectCategory(newId: CategoryId) {
+    const oldIndex = CATEGORIES.findIndex((c) => c.id === activeCategory);
+    const newIndex = CATEGORIES.findIndex((c) => c.id === newId);
+    setDirection(newIndex >= oldIndex ? 1 : -1);
+    setCategory(newId);
+  }
+
+  function goToOffset(offset: number) {
+    const idx = CATEGORIES.findIndex((c) => c.id === activeCategory);
+    const newIdx = idx + offset;
+    if (newIdx < 0 || newIdx >= CATEGORIES.length) return;
+    setDirection(offset > 0 ? 1 : -1);
+    setCategory(CATEGORIES[newIdx].id);
+  }
 
   const visibleTasks = useMemo(() => tasks.filter(isTaskVisibleToday), [tasks]);
 
@@ -80,6 +89,8 @@ export default function ManagerPage() {
   ).length;
   const pending = total - done;
   const flagged = pastFlagTime ? pending : 0;
+
+  const categoryInstances = toInstances(visibleTasks.filter((t) => t.category === activeCategory));
 
   async function handleComplete(instance: TaskInstance) {
     if (!user || !interactive) return;
@@ -105,6 +116,17 @@ export default function ManagerPage() {
     }
   }
 
+  async function handleUndo(completionId: string) {
+    const removed = completions.find((c) => c.id === completionId);
+    if (!removed) return;
+    setCompletions((prev) => prev.filter((c) => c.id !== completionId));
+    try {
+      await deleteCompletion(removed.id, removed.task_id, removed.date, removed.completed_by);
+    } catch {
+      setCompletions((prev) => [...prev, removed]);
+    }
+  }
+
   if (!ready || !user) return null;
 
   return (
@@ -122,7 +144,7 @@ export default function ManagerPage() {
         <LogoutButton onLogout={logout} light />
       </header>
 
-      <div className="flex flex-1 flex-col gap-5 px-5 py-5">
+      <div className="flex flex-1 flex-col gap-4 px-5 py-5">
         <div className="grid grid-cols-2 gap-3">
           <SummaryCard label="Total" value={total} icon="📋" />
           <SummaryCard label="Done" value={done} tone="sage" icon="✅" />
@@ -130,44 +152,59 @@ export default function ManagerPage() {
           <SummaryCard label="Flagged" value={flagged} tone="flag" icon="⚠️" />
         </div>
 
+        <TabPills categories={CATEGORIES} active={activeCategory} onChange={selectCategory} />
+
         {loading ? (
           <p className="py-8 text-center text-brown/50">Loading…</p>
+        ) : categoryInstances.length === 0 ? (
+          <p className="py-8 text-center text-brown/50">No tasks scheduled today.</p>
         ) : (
-          CATEGORIES.map((cat) => {
-            const instances = toInstances(visibleTasks.filter((t) => t.category === cat.id));
-            if (instances.length === 0) return null;
-            return (
-              <section key={cat.id} className="flex flex-col gap-2">
-                <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brown">
-                  <span className="h-1.5 w-1.5 rounded-full bg-pink" />
-                  {cat.label}
-                </h2>
-                <div className="flex flex-col gap-2">
-                  {instances.map((instance) => {
-                    const completion = completionByKey.get(
-                      completionKey(instance.task.id, instance.timeOfDay)
-                    );
-                    return (
-                      <TaskRow
-                        key={completionKey(instance.task.id, instance.timeOfDay)}
-                        title={instance.task.title}
-                        sessionLabel={instance.sessionLabel}
-                        done={!!completion}
-                        flagged={pastFlagTime && !completion}
-                        doneByName={completion?.users?.name}
-                        doneAtLabel={
-                          completion ? formatTimeIST(completion.completed_at) : undefined
-                        }
-                        note={completion?.notes}
-                        interactive={interactive}
-                        onComplete={() => handleComplete(instance)}
-                      />
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })
+          <SwipeableCategoryPanel
+            categoryKey={activeCategory}
+            direction={direction}
+            onSwipePrev={() => goToOffset(-1)}
+            onSwipeNext={() => goToOffset(1)}
+          >
+            {categoryInstances.map((instance) => {
+              const completion = completionByKey.get(
+                completionKey(instance.task.id, instance.timeOfDay)
+              );
+
+              // Only the person who completed it can undo, and only within
+              // the 2-minute window — never someone else's completion.
+              let canUndo = false;
+              let secondsRemaining: number | null = null;
+              if (
+                completion &&
+                !completion.id.startsWith("optimistic-") &&
+                completion.completed_by === user.id
+              ) {
+                const elapsed = now - parseUtcTimestamp(completion.completed_at).getTime();
+                if (elapsed < UNDO_WINDOW_MS) {
+                  canUndo = true;
+                  secondsRemaining = Math.max(0, Math.ceil((UNDO_WINDOW_MS - elapsed) / 1000));
+                }
+              }
+
+              return (
+                <TaskRow
+                  key={completionKey(instance.task.id, instance.timeOfDay)}
+                  title={instance.task.title}
+                  sessionLabel={instance.sessionLabel}
+                  done={!!completion}
+                  flagged={pastFlagTime && !completion}
+                  doneByName={completion?.users?.name}
+                  doneAtLabel={completion ? formatTimeIST(completion.completed_at) : undefined}
+                  note={completion?.notes}
+                  interactive={interactive}
+                  canUndo={canUndo}
+                  secondsRemaining={secondsRemaining}
+                  onComplete={() => handleComplete(instance)}
+                  onUndo={completion ? () => handleUndo(completion.id) : undefined}
+                />
+              );
+            })}
+          </SwipeableCategoryPanel>
         )}
       </div>
 

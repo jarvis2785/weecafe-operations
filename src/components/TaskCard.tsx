@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { formatCountdown } from "@/lib/date";
 
 interface TaskCardProps {
   title: string;
@@ -59,8 +60,7 @@ export default function TaskCard({
                   }}
                   className="-my-3 flex min-h-[44px] items-center px-1 text-[12px] font-medium text-pink underline underline-offset-2"
                 >
-                  Undo
-                  {secondsRemaining != null && secondsRemaining < 30 ? ` (${secondsRemaining}s)` : ""}
+                  Undo {secondsRemaining != null ? `(${formatCountdown(secondsRemaining)})` : ""}
                 </button>
               </>
             )}
