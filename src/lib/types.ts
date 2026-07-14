@@ -7,7 +7,8 @@ export type CategoryId =
   | "bathroom_cleaning"
   | "coffee_station"
   | "backend_cleaning"
-  | "manager_checklist";
+  | "manager_checklist"
+  | "closing_tasks";
 export type Frequency = "daily" | "twice_daily" | "weekly";
 export type TimeOfDay = "morning" | "evening";
 

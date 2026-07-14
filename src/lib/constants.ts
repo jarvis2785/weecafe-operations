@@ -8,6 +8,7 @@ export const CATEGORIES: { id: CategoryId; label: string }[] = [
   { id: "coffee_station", label: "☕ Coffee Station" },
   { id: "backend_cleaning", label: "📦 Backend Cleaning" },
   { id: "manager_checklist", label: "📋 Manager Checklist" },
+  { id: "closing_tasks", label: "🔒 Closing Tasks" },
 ];
 
 export const FREQUENCIES: { id: Frequency; label: string }[] = [

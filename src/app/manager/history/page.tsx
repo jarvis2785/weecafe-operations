@@ -20,6 +20,7 @@ const FILTER_PILLS: { id: CategoryId | "all"; label: string }[] = [
   { id: "coffee_station", label: "☕ Coffee Station" },
   { id: "backend_cleaning", label: "📦 Backend" },
   { id: "manager_checklist", label: "📋 Manager" },
+  { id: "closing_tasks", label: "🔒 Closing" },
 ];
 
 // Cycles through brand colors only (no raw greys) to give each category a
@@ -32,6 +33,7 @@ const CATEGORY_DOT: Record<CategoryId, string> = {
   coffee_station: "bg-sage/50",
   backend_cleaning: "bg-brown/50",
   manager_checklist: "bg-pink",
+  closing_tasks: "bg-sage",
 };
 
 function countDone(
